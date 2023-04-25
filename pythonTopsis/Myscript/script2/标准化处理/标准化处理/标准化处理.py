@@ -1,31 +1,7 @@
 import pandas as pd
 from openpyxl import load_workbook;
 import numpy as np
-
-
-def manipulate_excel(file_path: str, n: int):
-    """
-    打开一个Excel表格，将E列第n行的数值设置为D列n行的数值减去D列19行的数据，
-    然后除以D列20行的值。如果D列n行的值为负数，则将公式改为D列18行的值减去
-    D列n行的值，然后除以D列20行的值。
-    
-    :param file_path: Excel表格的文件路径
-    :param n: 要操作的行数
-    """
-    # 读取Excel文件
-    df = pd.read_excel(file_path)
-    
-    # 计算公式
-    if df.loc[n,'D'] >= 0:
-        value = (df.loc[n,'D'] - df.loc[19,'D']) / df.loc[20,'D']
-    else:
-        value = (df.loc[18,'D'] - df.loc[n,'D']) / df.loc[20,'D']
-    
-    # 将计算结果写入E列第n行
-    df.loc[n,'E'] = value
-    
-    # 保存修改后的Excel文件
-    df.to_excel(file_path, index=False)
+import secondStep
 
 #该函数用来计算熵权中的标准化步骤
 def dataStanderlization(file_path:str,columnName:list,columnWriteName:str):
@@ -49,21 +25,24 @@ def sumOfStdResult(filePath:str):
     df.loc[19,"result_std_2021"] = sum;
     df.to_excel(filePath)
 
+
 def computePij(filePath:str):
     df = pd.read_excel(filePath)
     sumOfBij = df.loc[19,"result_std_2021"]
+
     sumOfPij = 0
     for i in range(0,len(df)):
         singleBij = df.loc[i,"result_std_2021"]
         Pij = (singleBij/sumOfBij);
+
         df.loc[i,"P(ij)_2021"] = Pij;
+
         if Pij != 0:
             df.loc[i,"LnP(ij)_2021"] = np.log(Pij)
         sumOfPij += df.loc[i,"P(ij)_2021"]
 
     df.loc[20,"P(ij)_2021"] = sumOfPij
     df.to_excel(filePath,index=False)
-
 
 #这个函数计算熵值，熵值的计算是以每一个企业的每一个指标进行计算，也就是说，该函数要跨表完成任务。
 def computeTheFuckingEntropy(pathroot:str,sheet_list:list):
@@ -74,40 +53,36 @@ def computeTheFuckingEntropy(pathroot:str,sheet_list:list):
     for i in sheet_list:
         filePath = pathroot+i+".xlsx"
         df = pd.read_excel(filePath)
-        company_list.append(df)
+        company_list.append(df) #该列表存储pd对象
 
 
     list_of_index = [];#该列表用来记录每个指标的信息熵
     list_of_index_with_ln = [];#该列表用来记录信息熵除以lnm后的值
-    list_of_differantial_value = []
+    list_of_differantial_value = []#记录变异系数
     list_of_weight = [] #记录熵权
     res = 0;
-    #调试用
-    a = 0;
-    if a == 1:
-        for j in company_list:
-            print(j.info())
-
-
     #该循环记录下每一个Pij与Lnpij的乘积的和，存储在一个list中
     for j in range(0,15):
         res = 0;
+
         for i in company_list:
             value_pij = i.loc[j,"P(ij)_2021"]
             value_lnpij = i.loc[j,"LnP(ij)_2021"]
+
             if (np.isnan(value_pij)) != True and (np.isnan(value_lnpij)) != True:
                 res += value_pij * value_lnpij
-            #res += value_pij * value_lnpij;
+        list_of_index.append(-(res))
 
-        list_of_index.append(-res)
 
     for i in list_of_index:
         value_final = i/np.log(15)
         list_of_index_with_ln.append(value_final)
 
-    if 1==0:
-        for i in list_of_index_with_ln:
-            print(i)
+    for i in range(0,len(company_list)):
+        pathfile=pathroot+sheet_list[i]+".xlsx"
+        for j in range(0,len(list_of_index_with_ln)):
+            company_list[i].loc[j,"entropy_2021"] = list_of_index_with_ln[j]
+        company_list[i].to_excel(pathfile,index=False)
 
     #计算指标的差异度
     sumOfDifferantialValue = 0;
@@ -117,21 +92,29 @@ def computeTheFuckingEntropy(pathroot:str,sheet_list:list):
         list_of_differantial_value.append(differantialValue_temp)
         sumOfDifferantialValue += differantialValue_temp;
 
-    if 1==0:
-        print("SUM")
-        print(sumOfDifferantialValue)
-
     for i in list_of_differantial_value:
         weight_temp = i/sumOfDifferantialValue
         list_of_weight.append(weight_temp)
 
-    if 1==1:
-        for i in list_of_weight:
-            print(i)
+    for i in range(0,len(company_list)):
+        pathfile=pathroot+sheet_list[i]+".xlsx"
+        for j in range(0,len(list_of_weight)):
+            company_list[i].loc[j,"W(ij)_2021"] = list_of_weight[j]
+        company_list[i].to_excel(pathfile,index=False)
+
+def computeRij(filePath:str):
+    df = pd.read_excel(filePath)
+    for i in range(0,15):
+        originValue = df.loc[i,"value_2021"];
+        weightValue = df.loc[i,"W(ij)_2021"];
+        resultValue = originValue * weightValue;
+        df.loc[i,"r(ij)_2021"] = resultValue;
+
+    df.to_excel(filePath,index=False)
+
 def insertValueToFile(filePath:str,value:float,positionRow:int,positionCol:str):
     df = pd.read_excel(filePath)
     df.loc[positionRow,positionCol] = value;
-
 
 #该函数将以元和人为单位的数值转化为以亿为单位
 def transformUnits(filePath:str):
@@ -195,16 +178,18 @@ def doTheInsert(pathroot:str,sheet_list:list):
        ds.insert(loc=6,column="LnP(ij)_2021",value=0)
        ds.insert(loc=7,column="entropy_2021",value=0)
        ds.insert(loc=8,column="W(ij)_2021",value=0)
+       ds.insert(loc=9,column="r(ij)_2021",value=0)
 
-       ds.insert(loc=10,column="result_std_2020",value=0)
-       ds.insert(loc=11,column="P(ij)_2020",value=0)
-       ds.insert(loc=12,column="LnP(ij)_2020",value=0)
-       ds.insert(loc=13,column="entroy_2020",value=0)
-       ds.insert(loc=14,column="W(ij)_2020",value=0)
-
+       ds.insert(loc=11,column="result_std_2020",value=0)
+       ds.insert(loc=12,column="P(ij)_2020",value=0)
+       ds.insert(loc=13,column="LnP(ij)_2020",value=0)
+       ds.insert(loc=14,column="entroy_2020",value=0)
+       ds.insert(loc=15,column="W(ij)_2020",value=0)
+       ds.insert(loc=16,column="r(ij)_2020",value=0)
        ds.to_excel(pathroot+i+".xlsx",index=False)
 
-def dealAllDocsModify(pathroot:str,sheet_list:list):
+#该函数用来修改表中的列和行的信息，该函数调用的函数都是一次处理一个表
+def loopEverySheets(pathroot:str,sheet_list:list):
     for i in sheet_list:
         filePath = pathroot+i+".xlsx"
         transformUnits(filePath)
@@ -213,7 +198,11 @@ def dealAllDocsModify(pathroot:str,sheet_list:list):
         modifyNo(filePath)
         sumOfStdResult(filePath)
         computePij(filePath)
-        #computeTheFuckingEntropy(pathroot,sheet_list)
+
+def loopEverySheetsForRij(pathroot:str,sheet_list:list):
+    for i in sheet_list:
+        filePath = pathroot+i+".xlsx"
+        computeRij(filePath)
 
 #该函数是入口函数
 def main():
@@ -224,8 +213,20 @@ def main():
 
     #migration(pathroot,path_collect,sheet_list);
     #doTheInsert(pathroot,sheet_list);
-    #dealAllDocsModify(pathroot,sheet_list);
-    computeTheFuckingEntropy(pathroot,sheet_list)
+    #loopEverySheets(pathroot,sheet_list);
+    #computeTheFuckingEntropy(pathroot,sheet_list)
+    #loopEverySheetsForRij(pathroot,sheet_list)
 
+    m = secondStep.MaxMinVectors(pathroot,sheet_list);
+    listToCompute = m.computeMaxMinVector_2021();
+    print("Positive:")
+    m.computeDijPositive()
+    m.printList(m.D_Positive)
+    print("Negtive")
+    m.computeDijNegtive()
+    m.printList(m.D_Negtive)
+
+    print("Final")
+    m.computeFinalResult()
 if __name__ == "__main__":
     main()
